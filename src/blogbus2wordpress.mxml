@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:WindowedApplication xmlns:mx="http://www.adobe.com/2006/mxml" layout="absolute" creationComplete="init()">
+	<mx:Script source="templates.as"/>
+	<mx:Script>
+		<![CDATA[
+		import flash.filesystem.*;
+		import mx.controls.Alert;
+
+		private namespace excerpt="http://wordpress.org/export/1.0/excerpt/"
+		private namespace content="http://purl.org/rss/1.0/modules/content/"
+		private namespace dc="http://purl.org/dc/elements/1.1/"
+		private namespace wp="http://wordpress.org/export/1.0/"
+		
+		private var startIndex:Number = 1;
+		private var endIndex:Number = 1000;
+		
+		private function readBlogbusBackup(path:String):XML{
+			var file:File = File.desktopDirectory.resolvePath(path);
+			var stream:FileStream = new FileStream();
+			stream.open( file, FileMode.READ );
+			var xml:XML = new XML(stream.readUTFBytes( stream.bytesAvailable ))
+			stream.close();
+			return xml;
+		}
+		
+		private function writeWordpress(rss:XML):void {
+			var file:File = File.desktopDirectory.resolvePath("wordpress"+startInput.text+"_"+endInput.text+".xml");
+			var stream:FileStream = new FileStream();
+			stream.open( file, FileMode.WRITE );
+			stream.writeUTFBytes(rss.toXMLString());
+			stream.close();
+			Alert.show("Converted File has been saved at "+file.nativePath)
+		}
+		
+		private function convert():void {
+			startIndex = Number(startInput.text)-1
+			endIndex = Number(endInput.text)-1
+			var blogbus_xml:XML = readBlogbusBackup(filename.text)
+			
+			var rss:XML = rss_template.copy();	
+			for (var i:Number=0; i<blogbus_xml.elements("Log").length(); ++i) {
+				if (i >= startIndex && i<=endIndex) 
+					rss.appendChild(parse(blogbus_xml.Log[i]));
+			}
+			
+			writeWordpress(rss);
+		}
+		
+		private function parse(log:XML):XML {
+			var wp_post:XML = wp_post_template.copy();
+			wp_post.title.children()[0] = log.Title.children()[0];
+			wp_post.content::encoded.children()[0] = log.Content.children()[0]
+			wp_post.wp::post_date.children()[0] = log.LogDate.children()[0]
+			
+			var tags:Array = log.Tags.toString().split(" ");
+			for each (var tag:String in tags) {
+				var wp_category:XML = wp_category_template.copy();
+				wp_category.children()[0] =  new XML("<![CDATA["+tag+"]"+"]>")
+				wp_post.appendChild(wp_category);
+			} 
+			
+			for each (var comment:XML in log.Comments.Comment) {
+				var wp_comment:XML = wp_comment_template.copy();
+				wp_comment.wp::comment_author.children()[0] = comment.NiceName.children()[0];
+				if (comment.Email.children().length() > 0)
+					wp_comment.wp::comment_author_email.children()[0] = comment.Email.children()[0];
+				if (comment.HomePage.children().length() > 0)
+					wp_comment.wp::comment_author_url.children()[0] = comment.HomePage.children()[0];
+				wp_comment.wp::comment_date.children()[0] = comment.CreateTime.children()[0];
+				wp_comment.wp::comment_content.children()[0] = comment.CommentText.children()[0];
+				wp_post.appendChild(wp_comment);
+			}
+			
+			return wp_post;
+		}
+		
+		private function getDesktopXMLFileList():Array{
+			var farr:Array = File.desktopDirectory.getDirectoryListing();
+			var arr:Array = [];
+			for each(var f:File in farr) {
+				if (f.extension == "xml") arr.push(f.name);
+			}
+			return arr;
+		}
+		
+		private function init():void{
+			filename.dataProvider = getDesktopXMLFileList();
+		}
+		]]>
+	</mx:Script>
+	<mx:VBox horizontalCenter="0" verticalCenter="0">
+		<mx:Label text="Please Put Blogbus Backup File on Your Desktop"/>
+		<mx:Button label="Refresh Desktop Files List" click="init()"/>
+		<mx:HBox>
+			<mx:Label text="Select Blogbus File"/>
+			<mx:ComboBox id="filename"></mx:ComboBox>
+		</mx:HBox>
+		<mx:HBox>
+			<mx:Label text="Convert Posts From"/>
+			<mx:TextInput width="100" id="startInput" text="1"/>
+			<mx:Label text="To"/>
+			<mx:TextInput width="100" id="endInput" text="1000"/>
+			<mx:Button label="Convert" click="convert()"/>
+		</mx:HBox>
+	</mx:VBox>
+	<mx:LinkButton label="http://sakinijino.com" bottom="0" right="0" click="{navigateToURL(new URLRequest('http://sakinijino.com'))}"/>
+</mx:WindowedApplication>
