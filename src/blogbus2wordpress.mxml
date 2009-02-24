@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<mx:WindowedApplication xmlns:mx="http://www.adobe.com/2006/mxml" layout="absolute" creationComplete="init()">
+<mx:WindowedApplication xmlns:mx="http://www.adobe.com/2006/mxml" layout="absolute" creationComplete="init()" fontSize="12">
 	<mx:Script source="templates.as"/>
 	<mx:Script>
 		<![CDATA[
@@ -13,7 +13,7 @@
 		
 		private var startIndex:Number = 1;
 		private var endIndex:Number = 1000;
-		
+			
 		private function readBlogbusBackup(path:String):XML{
 			var file:File = File.desktopDirectory.resolvePath(path);
 			var stream:FileStream = new FileStream();
@@ -37,10 +37,29 @@
 			endIndex = Number(endInput.text)-1
 			var blogbus_xml:XML = readBlogbusBackup(filename.text)
 			
-			var rss:XML = rss_template.copy();	
+			var posts:Array = []
+			
 			for (var i:Number=0; i<blogbus_xml.elements("Log").length(); ++i) {
 				if (i >= startIndex && i<=endIndex) 
-					rss.appendChild(parse(blogbus_xml.Log[i]));
+					posts.push(parse(blogbus_xml.Log[i]));
+			}
+			
+			posts.sort(function(post1:XML, post2:XML):Number {
+				var date_pattern:RegExp = new RegExp("(\\d+)-(\\d+)-(\\d+) (\\d+):(\\d+):(\\d+)");
+				var re:Array
+				re = date_pattern.exec(post1.wp::post_date.toString());
+				var date1:Date = new Date(Number(re[1]), Number(re[2]), Number(re[3]), Number(re[4]), Number(re[5]), Number(re[6]));		
+				re = date_pattern.exec(post2.wp::post_date.toString());
+				var date2:Date = new Date(Number(re[1]), Number(re[2]), Number(re[3]), Number(re[4]), Number(re[5]), Number(re[6]));
+				
+				if (date1 > date2) return 1;
+				if (date1 < date2) return -1;
+				return 0;
+			});
+			
+			var rss:XML = rss_template.copy();
+			for each(var post:XML in posts) {
+				rss.channel.appendChild(post);
 			}
 			
 			writeWordpress(rss);
@@ -86,22 +105,72 @@
 		private function init():void{
 			filename.dataProvider = getDesktopXMLFileList();
 		}
+		
+		private function compare():void {
+			var file:File;
+			var stream:FileStream;
+			
+			var result_arr:Array = []
+			
+			file = File.desktopDirectory.resolvePath(import_filename.text);
+			stream = new FileStream();
+			stream.open( file, FileMode.READ );
+			var import_xml:XML = new XML(stream.readUTFBytes( stream.bytesAvailable ))
+			stream.close();
+			
+			file = File.desktopDirectory.resolvePath(export_filename.text);
+			stream = new FileStream();
+			stream.open( file, FileMode.READ );
+			var export_xml:XML = new XML(stream.readUTFBytes( stream.bytesAvailable ))
+			stream.close();
+			
+			for (var i:Number=0; i<import_xml.channel.elements("item").length(); ++i) {
+				var content1:String = import_xml.channel.item[i].content::encoded.children()[0].toString();
+				var content2:String = export_xml.channel.item[i].content::encoded.children()[0].toString();
+				content1 = StringUtils.trim(content1).replace(new RegExp("\r\n", "g"), "\n")
+				content2 = StringUtils.trim(content2).replace(new RegExp("\r\n", "g"), "\n")
+				if (content1 != content2)
+					result_arr.push(i);
+			}
+			
+			var message:String = "";
+			for each (var index:Number in result_arr){
+				message += import_xml.channel.item[index].title.toString()
+					 + " - "
+					 + import_xml.channel.item[index].wp::post_date.toString()
+					 + "\n";
+			}
+			Alert.show(message);
+		}
 		]]>
 	</mx:Script>
 	<mx:VBox horizontalCenter="0" verticalCenter="0">
-		<mx:Label text="Please Put Blogbus Backup File on Your Desktop"/>
-		<mx:Button label="Refresh Desktop Files List" click="init()"/>
+		<mx:Label text="请把你从blogbus导出的文件放到桌面上"/>
+		<mx:Button label="刷新桌面文件列表" click="init()"/>
 		<mx:HBox>
-			<mx:Label text="Select Blogbus File"/>
+			<mx:Label text="选择blogbus导出文件"/>
 			<mx:ComboBox id="filename"></mx:ComboBox>
 		</mx:HBox>
 		<mx:HBox>
-			<mx:Label text="Convert Posts From"/>
+			<mx:Label text="转换从"/>
 			<mx:TextInput width="100" id="startInput" text="1"/>
-			<mx:Label text="To"/>
+			<mx:Label text="到"/>
 			<mx:TextInput width="100" id="endInput" text="1000"/>
-			<mx:Button label="Convert" click="convert()"/>
+			<mx:Label text="条日志"/>
+			<mx:Button label="转换" click="convert()"/>
 		</mx:HBox>
+		<mx:Label text=""/>
+		<mx:Label text="比较长的文章导入时可能出现被截断的情况(WP导入的Bug?)"/>
+		<mx:Label text="下面功能可以比较生成的导入文件和Wordpress的导出文件, 找出文章不一致的情况"/>
+		<mx:HBox>
+			<mx:Label text="选择导入文件"/>
+			<mx:ComboBox id="import_filename" dataProvider="{filename.dataProvider}"></mx:ComboBox>
+		</mx:HBox>
+		<mx:HBox>
+			<mx:Label text="选择导出文件"/>
+			<mx:ComboBox id="export_filename" dataProvider="{filename.dataProvider}"></mx:ComboBox>
+		</mx:HBox>
+		<mx:Button label="比较(文章多时可能会较慢)" click="compare()"/>
 	</mx:VBox>
 	<mx:LinkButton label="http://sakinijino.com" bottom="0" right="0" click="{navigateToURL(new URLRequest('http://sakinijino.com'))}"/>
 </mx:WindowedApplication>
